@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//opt/**)",
+      "Bash(find / -maxdepth 3 -iname \"python3*\" -type f)"
+    ]
+  }
+}

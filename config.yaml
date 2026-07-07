@@ -1,0 +1,72 @@
+# External configuration for the MySkillsFuture scraper.
+# Every timing, retry, proxy, and concurrency parameter lives here.
+# Do NOT hardcode any of these values in scraper code - change them here instead.
+
+base_url: "https://courses.myskillsfuture.gov.sg"
+db_path: "data/courses.db"
+log_path: "data/scraper.log"
+headless: false
+
+jitter:
+  min_seconds: 2.0
+  max_seconds: 8.0
+
+retry:
+  max_attempts: 3
+  backoff_base_seconds: 2.0
+  backoff_max_seconds: 30.0
+
+concurrency:
+  max_sessions: 2          # keep low (1-3) to balance throughput vs detection risk
+
+pagination:
+  max_pages: 3            # safety cap on search-result pagination
+
+rate_limit:
+  requests_per_minute: 12
+
+circuit_breaker:
+  block_threshold: 3        # consecutive blocks before tripping
+  cooldown_seconds: 120.0
+
+proxies:
+  enabled: false             # flip to true once a real proxy pool is provisioned
+  health_check_url: "https://httpbin.org/ip"
+  health_check_timeout_seconds: 8.0
+  pool:
+    - "http://user:pass@proxy1.example.com:8000"
+    - "http://user:pass@proxy2.example.com:8000"
+
+user_agents:
+  - "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+  - "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+  - "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+  - "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+  - "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
+
+viewports:
+  - { width: 1280, height: 720 }
+  - { width: 1366, height: 768 }
+  - { width: 1440, height: 900 }
+  - { width: 1536, height: 864 }
+  - { width: 1920, height: 1080 }
+
+locales:
+  - "en-US"
+  - "en-SG"
+  - "en-GB"
+
+timezones:
+  - "Asia/Singapore"
+  - "America/New_York"
+  - "Europe/London"
+
+block_signatures:
+  - "access denied"
+  - "attention required"
+  - "cf-browser-verification"
+  - "cf-chl"
+  - "checking your browser"
+  - "captcha"
+  - "are you a robot"
+  - "unusual traffic"
