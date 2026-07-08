@@ -203,21 +203,25 @@ def extract_rating(soup: BeautifulSoup) -> tuple[str | None, str | None]:
 
 
 def extract_attendance(soup: BeautifulSoup) -> str | None:
-    """Matched by searching directly for the "have attended" substring
-    rather than a strict regex-anchored match, since the live markup's
-    whitespace/casing around this token varies enough to skip a tight
-    pattern match."""
+    """Mencari elemen yang mengandung 'have attended' dan mengunci 
+    hanya angka yang berada tepat di depan kalimat tersebut."""
+    
     for el in soup.find_all(["span", "div", "p"]):
-        text = el.get_text(strip=True)
-        if text and len(text) <= _MAX_META_TOKEN_LEN and "have attended" in text.lower():
-            return text
+        text = el.get_text(" ", strip=True)
+        if text and "have attended" in text.lower():
+            # Mengunci angka/koma yang berada tepat sebelum kata 'have attended'
+            match = re.search(r'([\d,]+)\s+have attended', text, re.IGNORECASE)
+            if match:
+                return match.group(1)
 
-    # Fallback: scan the raw document text nodes directly in case the
-    # matching text isn't isolated in one of the tags checked above.
+    # Fallback: scan langsung text node jika elemen terpisah tag
     for node in soup.find_all(string=re.compile(r"have attended", re.IGNORECASE)):
         text = node.strip()
-        if text and len(text) <= _MAX_META_TOKEN_LEN:
-            return text
+        # Coba cari di teks node itu sendiri atau gabungan teks dari induknya (parent)
+        parent_text = node.parent.get_text(" ", strip=True) if node.parent else text
+        match = re.search(r'([\d,]+)\s+have attended', parent_text, re.IGNORECASE)
+        if match:
+            return match.group(1)
 
     return None
 
