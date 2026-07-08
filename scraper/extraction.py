@@ -40,12 +40,10 @@ _FEE_SUBSIDIZED_LABELS = ["SkillsFuture Subsidies", "Nett Course Fee", "Nett Fee
 # heuristic, selector-based parser instead.
 _RATING_SCORE_PATTERN = re.compile(r"^\d(?:\.\d)?$")
 _RATING_COUNT_PATTERN = re.compile(r"^[\d,]+\s+ratings?$", re.IGNORECASE)
-_ATTENDANCE_PATTERN = re.compile(r"^[\d,]+\s+have attended$", re.IGNORECASE)
 _DATE_ADDED_PATTERN = re.compile(
     r"\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}\b",
     re.IGNORECASE,
 )
-_DURATION_DAYS_PATTERN = re.compile(r"^\d+\s*(?:-\s*\d+\s*)?days?$", re.IGNORECASE)
 _DESCRIPTION_HEADING_MARKERS = ["course description", "about this course", "description"]
 _SKILLS_HEADING_MARKERS = ["skills you'll pick up", "skills you will pick up", "what you'll learn"]
 _MAX_META_TOKEN_LEN = 60
@@ -88,7 +86,7 @@ class CourseRecord:
     fee_subsidized: str | None
     rating_score: str | None
     rating_count: str | None
-    attendance_count: str | None
+    telah_menghadiri: str | None
     course_description: str | None
     skills_gained: str | None
     date_added: str | None
@@ -205,10 +203,22 @@ def extract_rating(soup: BeautifulSoup) -> tuple[str | None, str | None]:
 
 
 def extract_attendance(soup: BeautifulSoup) -> str | None:
+    """Matched by searching directly for the "have attended" substring
+    rather than a strict regex-anchored match, since the live markup's
+    whitespace/casing around this token varies enough to skip a tight
+    pattern match."""
     for el in soup.find_all(["span", "div", "p"]):
         text = el.get_text(strip=True)
-        if text and len(text) <= _MAX_META_TOKEN_LEN and _ATTENDANCE_PATTERN.match(text):
+        if text and len(text) <= _MAX_META_TOKEN_LEN and "have attended" in text.lower():
             return text
+
+    # Fallback: scan the raw document text nodes directly in case the
+    # matching text isn't isolated in one of the tags checked above.
+    for node in soup.find_all(string=re.compile(r"have attended", re.IGNORECASE)):
+        text = node.strip()
+        if text and len(text) <= _MAX_META_TOKEN_LEN:
+            return text
+
     return None
 
 
@@ -267,19 +277,20 @@ def extract_meta_footer(soup: BeautifulSoup) -> tuple[str | None, str | None, st
             match = _DATE_ADDED_PATTERN.search(text)
             if match:
                 date_added = match.group(0)
-                continue
 
-        if training_duration_days is None and _DURATION_DAYS_PATTERN.match(text):
+        if (
+            training_duration_days is None
+            and ("day" in text.lower() or "days" in text.lower())
+            and any(ch.isdigit() for ch in text)
+            and len(text) < 15
+        ):
             training_duration_days = text
-            continue
 
         if sector_category is None and text in _KNOWN_SECTORS:
             sector_category = text
-            continue
 
         if language_used is None and text in _KNOWN_LANGUAGES:
             language_used = text
-            continue
 
         if date_added and training_duration_days and sector_category and language_used:
             break
@@ -313,7 +324,7 @@ def _failed_record(course_ref: CourseRef) -> CourseRecord:
         fee_subsidized=None,
         rating_score=None,
         rating_count=None,
-        attendance_count=None,
+        telah_menghadiri=None,
         course_description=None,
         skills_gained=None,
         date_added=None,
@@ -360,7 +371,7 @@ async def extract_course_detail(
         mode = extract_mode(soup)
         fee_standard, fee_subsidized = extract_fees(soup)
         rating_score, rating_count = extract_rating(soup)
-        attendance_count = extract_attendance(soup)
+        telah_menghadiri = extract_attendance(soup)
         course_description = extract_description(soup)
         skills_gained = extract_skills_gained(soup)
         date_added, sector_category, training_duration_days, language_used = extract_meta_footer(soup)
@@ -383,7 +394,7 @@ async def extract_course_detail(
             fee_subsidized=fee_subsidized,
             rating_score=rating_score,
             rating_count=rating_count,
-            attendance_count=attendance_count,
+            telah_menghadiri=telah_menghadiri,
             course_description=course_description,
             skills_gained=skills_gained,
             date_added=date_added,

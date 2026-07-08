@@ -1,0 +1,15 @@
+Hello Claude, I need to fix two specific fields that are currently returning NULL in our Stage 1 MySkillsFuture scraper, and perform one column rename. Please modify `scraper/extraction.py` and the corresponding database storage files with these exact requirements:
+
+1. Rename Column:
+   - Change the field name `attendance_count` to `telah_menghadiri` across the entire project (including the CourseRecord dataclass, SQLite schema insertion, and extraction mapping).
+
+2. Fix `telah_menghadiri` (formerly attendance_count) Extraction:
+   - The current regex pattern is too restrictive or getting skipped. Instead of relying strictly on regex matches during a heavy tag loop, update the `extract_attendance` function to search directly for any elements containing the substring "have attended" (case-insensitive).
+   - Implement a fallback that scans the document text directly using `soup.find_all(string=re.compile(r"have attended", re.IGNORECASE))` to ensure whitespace variation doesn't cause a miss.
+
+3. Fix `training_duration_days` Extraction:
+   - In `extract_meta_footer`, the loop uses `continue` right after finding the `date_added`. This is accidentally skipping the subsequent duration tokens (like "3-5 days" or "2 days") in the iteration.
+   - Remove the `continue` statements inside `extract_meta_footer` so that all meta tokens (date, duration days, sector, and language) are evaluated independently on every element loop.
+   - For `training_duration_days`, check if the element text contains "day" or "days", contains at least one numeric digit, and has a clean length of less than 15 characters to avoid picking up prose descriptions.
+
+Please rewrite the updated functions inside `scraper/extraction.py` clearly and make sure the SQLite database upsert logic is perfectly aligned with the new `telah_menghadiri` field name!

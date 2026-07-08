@@ -17,7 +17,7 @@ COLUMNS = [
     "fee_subsidized",
     "rating_score",
     "rating_count",
-    "attendance_count",
+    "telah_menghadiri",
     "course_description",
     "skills_gained",
     "date_added",
