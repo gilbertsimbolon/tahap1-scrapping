@@ -1,0 +1,25 @@
+Hello Claude, I need to update the Stage 1 scraping system in `scraper/extraction.py` and the SQLite database schema for our MySkillsFuture project.
+
+Based on the latest live DOM structure on the course detail page, there are several essential data fields inside the card that must be extracted but are currently missing or returning NULL.
+
+Please modify the code with the following requirements:
+
+1. Update Database Schema & `CourseRecord` Dataclass:
+   Add the following new columns to the SQLite database and dataclass structure:
+   - `rating_score` (TEXT/REAL, to hold values like "5.0")
+   - `rating_count` (TEXT/INTEGER, to hold values like "4,188 ratings")
+   - `attendance_count` (TEXT/INTEGER, to hold values like "11,207 have attended")
+   - `course_description` (TEXT, to hold the full course description paragraph text)
+   - `skills_gained` (TEXT, to hold the text under "Skills you'll pick up")
+   - `date_added` (TEXT, to hold the date added like "13 Jun 2026")
+   - `sector_category` (TEXT, to hold the sector category like "Information and Communications")
+   - `training_duration_days` (TEXT, create a dedicated column specifically for the duration format in days like "3-5 days", separate from the existing training_duration hours column)
+   - `language_used` (TEXT, to hold the instruction language like "English")
+
+2. Adjust Parsing Strategy in `scraper/extraction.py`:
+   Do NOT use the generic label lookup function (`_find_label_value`) for these heavy visual elements since they do not have conventional static text labels in the live HTML. Instead, write modular, independent parser functions based on direct element searches (Heuristic & Selectors Search) to extract the rating, attendance, main paragraph description, skills, and the meta footer icons line (Date added, sector, duration days, and language based on text patterns or nearby icons).
+
+3. Error Handling & Status:
+   If any of these additional fields are empty or not found on certain courses, return None but allow the overall scrape_status to remain `SUCCESS` as long as the mandatory fields (Title, ID, and Standard Fee) are successfully captured.
+
+Please rewrite the entire content of `scraper/extraction.py` to make it clean, resilient against bot blocking, and ready for production!

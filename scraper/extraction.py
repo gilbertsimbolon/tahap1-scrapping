@@ -8,6 +8,7 @@ into a FAILED/PARTIAL record so one bad page can never crash the run.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from bs4 import BeautifulSoup
@@ -33,6 +34,47 @@ _MODE_LABELS = ["Mode of Training", "Training Mode", "Mode", "Classroom"]
 _FEE_STANDARD_LABELS = ["Full Course Fee", "Course Fee (Before GST)", "Course Fee", "Full course fee:"]
 _FEE_SUBSIDIZED_LABELS = ["SkillsFuture Subsidies", "Nett Course Fee", "Nett Fee", "Fee After Subsidy"]
 
+# The fields below (rating, attendance, description, skills, meta footer)
+# render as icon/visual elements on the live page rather than label/value
+# pairs, so they can't go through `_find_label_value` - each has its own
+# heuristic, selector-based parser instead.
+_RATING_SCORE_PATTERN = re.compile(r"^\d(?:\.\d)?$")
+_RATING_COUNT_PATTERN = re.compile(r"^[\d,]+\s+ratings?$", re.IGNORECASE)
+_ATTENDANCE_PATTERN = re.compile(r"^[\d,]+\s+have attended$", re.IGNORECASE)
+_DATE_ADDED_PATTERN = re.compile(
+    r"\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}\b",
+    re.IGNORECASE,
+)
+_DURATION_DAYS_PATTERN = re.compile(r"^\d+\s*(?:-\s*\d+\s*)?days?$", re.IGNORECASE)
+_DESCRIPTION_HEADING_MARKERS = ["course description", "about this course", "description"]
+_SKILLS_HEADING_MARKERS = ["skills you'll pick up", "skills you will pick up", "what you'll learn"]
+_MAX_META_TOKEN_LEN = 60
+
+# Finite reference lists used to recognise unlabeled meta-footer tokens
+# (sector / language) by value rather than by a nearby label.
+_KNOWN_SECTORS = [
+    "Information and Communications",
+    "Financial Services",
+    "Healthcare",
+    "Retail",
+    "Manufacturing",
+    "Built Environment",
+    "Education",
+    "Food Services",
+    "Hotel and Accommodation Services",
+    "Logistics",
+    "Security",
+    "Tourism",
+    "Wholesale Trade",
+    "Human Resource",
+    "Public Service",
+    "Early Childhood Care and Education",
+    "Energy and Chemicals",
+    "Marine and Offshore",
+    "Precision Engineering",
+]
+_KNOWN_LANGUAGES = ["English", "Mandarin", "Malay", "Tamil", "Chinese", "Bahasa Indonesia", "Bilingual"]
+
 
 @dataclass(frozen=True)
 class CourseRecord:
@@ -44,6 +86,15 @@ class CourseRecord:
     training_mode: str | None
     fee_standard: str | None
     fee_subsidized: str | None
+    rating_score: str | None
+    rating_count: str | None
+    attendance_count: str | None
+    course_description: str | None
+    skills_gained: str | None
+    date_added: str | None
+    sector_category: str | None
+    training_duration_days: str | None
+    language_used: str | None
     search_keyword: str
     scrape_status: str
 
@@ -83,8 +134,8 @@ def extract_provider(soup: BeautifulSoup) -> str | None:
     val = _find_label_value(soup, _PROVIDER_LABELS)
     if val:
         return val
-    
-    # Cara 2: Cari teks apa pun yang mengandung kata 'LTD.' atau 'PTE.' atau 'CO.' 
+
+    # Cara 2: Cari teks apa pun yang mengandung kata 'LTD.' atau 'PTE.' atau 'CO.'
     # (Khas penamaan nama perusahaan/vendor di Singapura)
     for el in soup.find_all(["div", "span", "p", "a"]):
         text = el.get_text(strip=True)
@@ -104,7 +155,7 @@ def extract_provider(soup: BeautifulSoup) -> str | None:
                 txt = sibling.get_text(strip=True)
                 if 3 < len(txt) < 50 and "recommended" not in txt.lower():
                     return txt
-                    
+
     return None
 
 
@@ -113,7 +164,7 @@ def extract_duration(soup: BeautifulSoup) -> str | None:
     val = _find_label_value(soup, _DURATION_LABELS)
     if val:
         return val
-        
+
     # Cara 2: Cari teks yang mengandung kata 'days' atau 'hours' (misal: 3-5 days)
     for el in soup.find_all(["span", "div", "p"]):
         text = el.get_text(strip=True).lower()
@@ -121,7 +172,7 @@ def extract_duration(soup: BeautifulSoup) -> str | None:
         if any(marker in text for marker in ["days", "days", "hours", "hrs"]) and len(text) < 15:
             # Pastikan bukan teks tombol/link panjang
             return el.get_text(strip=True)
-            
+
     return None
 
 
@@ -133,6 +184,107 @@ def extract_fees(soup: BeautifulSoup) -> tuple[str | None, str | None]:
     fee_standard = _find_label_value(soup, _FEE_STANDARD_LABELS)
     fee_subsidized = _find_label_value(soup, _FEE_SUBSIDIZED_LABELS)
     return fee_standard, fee_subsidized
+
+
+def extract_rating(soup: BeautifulSoup) -> tuple[str | None, str | None]:
+    """Rating score/count render as bare numbers next to a star icon, with
+    no text label - matched by value shape instead."""
+    rating_score = None
+    rating_count = None
+    for el in soup.find_all(["span", "div", "p"]):
+        text = el.get_text(strip=True)
+        if not text or len(text) > _MAX_META_TOKEN_LEN:
+            continue
+        if rating_score is None and _RATING_SCORE_PATTERN.match(text):
+            rating_score = text
+        elif rating_count is None and _RATING_COUNT_PATTERN.match(text):
+            rating_count = text
+        if rating_score and rating_count:
+            break
+    return rating_score, rating_count
+
+
+def extract_attendance(soup: BeautifulSoup) -> str | None:
+    for el in soup.find_all(["span", "div", "p"]):
+        text = el.get_text(strip=True)
+        if text and len(text) <= _MAX_META_TOKEN_LEN and _ATTENDANCE_PATTERN.match(text):
+            return text
+    return None
+
+
+def extract_description(soup: BeautifulSoup) -> str | None:
+    for heading in soup.find_all(["h2", "h3", "h4", "strong", "b"]):
+        heading_text = heading.get_text(strip=True).lower()
+        if any(marker in heading_text for marker in _DESCRIPTION_HEADING_MARKERS):
+            sibling = heading.find_next(["p", "div"])
+            if sibling:
+                text = sibling.get_text(" ", strip=True)
+                if text:
+                    return text
+
+    # Fallback: no recognisable heading - take the longest paragraph on the
+    # page, since the description is typically the largest block of prose.
+    paragraphs = [p.get_text(" ", strip=True) for p in soup.find_all("p")]
+    paragraphs = [p for p in paragraphs if len(p) > 40]
+    if paragraphs:
+        return max(paragraphs, key=len)
+    return None
+
+
+def extract_skills_gained(soup: BeautifulSoup) -> str | None:
+    for heading in soup.find_all(["h2", "h3", "h4", "strong", "b", "span"]):
+        heading_text = heading.get_text(strip=True).lower()
+        if any(marker in heading_text for marker in _SKILLS_HEADING_MARKERS):
+            container = heading.find_next(["ul", "ol", "div", "p"])
+            if not container:
+                continue
+            items = [li.get_text(strip=True) for li in container.find_all("li")]
+            items = [item for item in items if item]
+            if items:
+                return ", ".join(items)
+            text = container.get_text(" ", strip=True)
+            if text:
+                return text
+    return None
+
+
+def extract_meta_footer(soup: BeautifulSoup) -> tuple[str | None, str | None, str | None, str | None]:
+    """Parses the icon-driven meta footer line (date added / sector /
+    duration-in-days / language). Each token has no static label, so it's
+    matched either against a date/duration pattern or a finite reference
+    list of known sector and language values."""
+    date_added = None
+    sector_category = None
+    training_duration_days = None
+    language_used = None
+
+    for el in soup.find_all(["span", "div", "li", "p"]):
+        text = el.get_text(strip=True)
+        if not text or len(text) > _MAX_META_TOKEN_LEN:
+            continue
+
+        if date_added is None:
+            match = _DATE_ADDED_PATTERN.search(text)
+            if match:
+                date_added = match.group(0)
+                continue
+
+        if training_duration_days is None and _DURATION_DAYS_PATTERN.match(text):
+            training_duration_days = text
+            continue
+
+        if sector_category is None and text in _KNOWN_SECTORS:
+            sector_category = text
+            continue
+
+        if language_used is None and text in _KNOWN_LANGUAGES:
+            language_used = text
+            continue
+
+        if date_added and training_duration_days and sector_category and language_used:
+            break
+
+    return date_added, sector_category, training_duration_days, language_used
 
 
 def _classify_status(
@@ -159,6 +311,15 @@ def _failed_record(course_ref: CourseRef) -> CourseRecord:
         training_mode=None,
         fee_standard=None,
         fee_subsidized=None,
+        rating_score=None,
+        rating_count=None,
+        attendance_count=None,
+        course_description=None,
+        skills_gained=None,
+        date_added=None,
+        sector_category=None,
+        training_duration_days=None,
+        language_used=None,
         search_keyword=course_ref.search_keyword,
         scrape_status=FAILED,
     )
@@ -198,6 +359,11 @@ async def extract_course_detail(
         duration = extract_duration(soup)
         mode = extract_mode(soup)
         fee_standard, fee_subsidized = extract_fees(soup)
+        rating_score, rating_count = extract_rating(soup)
+        attendance_count = extract_attendance(soup)
+        course_description = extract_description(soup)
+        skills_gained = extract_skills_gained(soup)
+        date_added, sector_category, training_duration_days, language_used = extract_meta_footer(soup)
 
         status = _classify_status(title, provider, duration, fee_standard)
         if status != SUCCESS:
@@ -215,6 +381,15 @@ async def extract_course_detail(
             training_mode=mode,
             fee_standard=fee_standard,
             fee_subsidized=fee_subsidized,
+            rating_score=rating_score,
+            rating_count=rating_count,
+            attendance_count=attendance_count,
+            course_description=course_description,
+            skills_gained=skills_gained,
+            date_added=date_added,
+            sector_category=sector_category,
+            training_duration_days=training_duration_days,
+            language_used=language_used,
             search_keyword=course_ref.search_keyword,
             scrape_status=status,
         )

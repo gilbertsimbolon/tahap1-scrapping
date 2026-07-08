@@ -7,10 +7,15 @@ from scraper.extraction import (
     SUCCESS,
     _classify_status,
     _failed_record,
+    extract_attendance,
+    extract_description,
     extract_duration,
     extract_fees,
+    extract_meta_footer,
     extract_mode,
     extract_provider,
+    extract_rating,
+    extract_skills_gained,
     extract_title,
 )
 
@@ -25,6 +30,34 @@ DETAIL_HTML = """
       <dt>Full Course Fee</dt><dd>SGD 1200.00</dd>
       <dt>Nett Course Fee</dt><dd>SGD 360.00</dd>
     </dl>
+  </body>
+</html>
+"""
+
+RICH_DETAIL_HTML = """
+<html>
+  <body>
+    <h1>Certified AI Practitioner</h1>
+    <div class="rating-row">
+      <span>4.8</span>
+      <span>4,188 ratings</span>
+    </div>
+    <div class="attendance-row">
+      <span>11,207 have attended</span>
+    </div>
+    <h3>Course Description</h3>
+    <p>This course equips learners with practical skills in applied artificial intelligence.</p>
+    <h3>Skills you'll pick up</h3>
+    <ul>
+      <li>Machine Learning</li>
+      <li>Data Analysis</li>
+    </ul>
+    <div class="meta-footer">
+      <span>13 Jun 2026</span>
+      <span>Information and Communications</span>
+      <span>3-5 days</span>
+      <span>English</span>
+    </div>
   </body>
 </html>
 """
@@ -86,3 +119,62 @@ def test_failed_record_preserves_identity_fields():
     assert record.search_keyword == ref.search_keyword
     assert record.scrape_status == FAILED
     assert record.course_title is None
+    assert record.rating_score is None
+    assert record.training_duration_days is None
+
+
+def test_extract_rating():
+    rating_score, rating_count = extract_rating(_soup(RICH_DETAIL_HTML))
+    assert rating_score == "4.8"
+    assert rating_count == "4,188 ratings"
+
+
+def test_extract_rating_missing():
+    rating_score, rating_count = extract_rating(_soup(DETAIL_HTML))
+    assert rating_score is None
+    assert rating_count is None
+
+
+def test_extract_attendance():
+    assert extract_attendance(_soup(RICH_DETAIL_HTML)) == "11,207 have attended"
+
+
+def test_extract_attendance_missing():
+    assert extract_attendance(_soup(DETAIL_HTML)) is None
+
+
+def test_extract_description():
+    description = extract_description(_soup(RICH_DETAIL_HTML))
+    assert description == "This course equips learners with practical skills in applied artificial intelligence."
+
+
+def test_extract_description_missing():
+    assert extract_description(_soup("<html><body></body></html>")) is None
+
+
+def test_extract_skills_gained():
+    assert extract_skills_gained(_soup(RICH_DETAIL_HTML)) == "Machine Learning, Data Analysis"
+
+
+def test_extract_skills_gained_missing():
+    assert extract_skills_gained(_soup(DETAIL_HTML)) is None
+
+
+def test_extract_meta_footer():
+    date_added, sector_category, training_duration_days, language_used = extract_meta_footer(
+        _soup(RICH_DETAIL_HTML)
+    )
+    assert date_added == "13 Jun 2026"
+    assert sector_category == "Information and Communications"
+    assert training_duration_days == "3-5 days"
+    assert language_used == "English"
+
+
+def test_extract_meta_footer_missing():
+    date_added, sector_category, training_duration_days, language_used = extract_meta_footer(
+        _soup(DETAIL_HTML)
+    )
+    assert date_added is None
+    assert sector_category is None
+    assert training_duration_days is None
+    assert language_used is None
