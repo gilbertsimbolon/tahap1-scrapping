@@ -12,7 +12,8 @@
       "Bash(apt-get install *)",
       "Bash(sudo -n true)",
       "Bash(python *)",
-      "Bash(python3 *)"
+      "Bash(python3 *)",
+      "Bash(compgen -c)"
     ]
   }
 }

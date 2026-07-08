@@ -1,0 +1,3 @@
+Hello Claude, the generated CSV file opens with all data crammed into a single column because the default delimiter formatting is not being recognized correctly by local spreadsheet applications. 
+
+Please update the CSV export logic inside `scraper/main.py` to ensure high compatibility. When opening and writing to the `courses.csv` file, first write a standalone metadata line `f.write("sep=,\n")` right before writing the header row. Additionally, explicitly pass the `dialect='excel'` parameter into the `csv.writer` initialization. Ensure that newline parameters are set to `newline=''` to avoid blank trailing rows.

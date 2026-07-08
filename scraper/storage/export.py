@@ -63,7 +63,8 @@ def export_to_csv(
     out_path = Path(output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.writer(fh)
+        fh.write("sep=,\n")
+        writer = csv.writer(fh, dialect="excel")
         writer.writerow(COLUMNS)
         for row in rows:
             writer.writerow([row[col] for col in COLUMNS])
