@@ -22,7 +22,6 @@ COLUMNS = [
     "skills_gained",
     "date_added",
     "sector_category",
-    "training_duration_days",
     "language_used",
     "search_keyword",
     "scrape_status",

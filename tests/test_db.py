@@ -32,7 +32,6 @@ def _record(course_id="TGS-2024048217", **overrides) -> CourseRecord:
         skills_gained="Machine Learning, Data Analysis",
         date_added="13 Jun 2026",
         sector_category="Information and Communications",
-        training_duration_days="3-5 days",
         language_used="English",
         search_keyword="artificial intelligence",
         scrape_status="SUCCESS",

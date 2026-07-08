@@ -2,7 +2,15 @@
   "permissions": {
     "allow": [
       "Read(//opt/**)",
-      "Bash(find / -maxdepth 3 -iname \"python3*\" -type f)"
+      "Bash(find / -maxdepth 3 -iname \"python3*\" -type f)",
+      "Bash(find / -maxdepth 3 -iname \"venv\")",
+      "Bash(command -v uv)",
+      "Read(//usr/bin/**)",
+      "Bash(apt list *)",
+      "Bash(dpkg -L libpython3.12-stdlib)",
+      "Bash(apt-cache policy *)",
+      "Bash(apt-get install *)",
+      "Bash(sudo -n true)"
     ]
   }
 }

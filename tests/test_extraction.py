@@ -120,7 +120,7 @@ def test_failed_record_preserves_identity_fields():
     assert record.scrape_status == FAILED
     assert record.course_title is None
     assert record.rating_score is None
-    assert record.training_duration_days is None
+    assert record.training_duration is None
 
 
 def test_extract_rating():
@@ -161,20 +161,20 @@ def test_extract_skills_gained_missing():
 
 
 def test_extract_meta_footer():
-    date_added, sector_category, training_duration_days, language_used = extract_meta_footer(
+    date_added, sector_category, training_duration, language_used = extract_meta_footer(
         _soup(RICH_DETAIL_HTML)
     )
     assert date_added == "13 Jun 2026"
     assert sector_category == "Information and Communications"
-    assert training_duration_days == "3-5 days"
+    assert training_duration == "3-5 days"
     assert language_used == "English"
 
 
 def test_extract_meta_footer_missing():
-    date_added, sector_category, training_duration_days, language_used = extract_meta_footer(
+    date_added, sector_category, training_duration, language_used = extract_meta_footer(
         _soup(DETAIL_HTML)
     )
     assert date_added is None
     assert sector_category is None
-    assert training_duration_days is None
+    assert training_duration is None
     assert language_used is None

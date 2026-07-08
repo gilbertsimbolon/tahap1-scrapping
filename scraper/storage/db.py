@@ -32,7 +32,6 @@ CREATE TABLE IF NOT EXISTS courses (
     skills_gained           TEXT,
     date_added              TEXT,
     sector_category         TEXT,
-    training_duration_days  TEXT,
     language_used           TEXT,
     search_keyword          TEXT NOT NULL,
     scrape_status       TEXT NOT NULL DEFAULT 'SUCCESS'
@@ -85,9 +84,9 @@ INSERT INTO courses (course_id, course_url, course_title, provider_name,
                       training_duration, training_mode, fee_standard,
                       fee_subsidized, rating_score, rating_count,
                       count_attended, course_description, skills_gained,
-                      date_added, sector_category, training_duration_days,
+                      date_added, sector_category,
                       language_used, search_keyword, scrape_status, last_scraped_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 ON CONFLICT(course_id) DO UPDATE SET
     course_url              = excluded.course_url,
     course_title            = excluded.course_title,
@@ -103,7 +102,6 @@ ON CONFLICT(course_id) DO UPDATE SET
     skills_gained           = excluded.skills_gained,
     date_added               = excluded.date_added,
     sector_category          = excluded.sector_category,
-    training_duration_days   = excluded.training_duration_days,
     language_used            = excluded.language_used,
     scrape_status            = excluded.scrape_status,
     last_scraped_at          = CURRENT_TIMESTAMP;
@@ -143,7 +141,6 @@ def upsert_course(conn: sqlite3.Connection, record: "CourseRecord") -> None:
             record.skills_gained,
             record.date_added,
             record.sector_category,
-            record.training_duration_days,
             record.language_used,
             record.search_keyword,
             record.scrape_status,

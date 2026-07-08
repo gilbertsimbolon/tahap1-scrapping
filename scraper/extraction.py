@@ -44,7 +44,9 @@ _DATE_ADDED_PATTERN = re.compile(
     r"\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}\b",
     re.IGNORECASE,
 )
-_DURATION_DAYS_PATTERN = re.compile(r"\b(\d+(?:\s*[-–—]\s*\d+)?\s*days?)\b", re.IGNORECASE)
+_DURATION_PATTERN = re.compile(
+    r"\b(\d+(?:\s*[-–—]\s*\d+)?\s*(?:hours?|hrs?|days?))\b", re.IGNORECASE
+)
 _DESCRIPTION_HEADING_MARKERS = ["course description", "about this course", "description"]
 _SKILLS_HEADING_MARKERS = ["skills you'll pick up", "skills you will pick up", "what you'll learn"]
 _MAX_META_TOKEN_LEN = 60
@@ -92,7 +94,6 @@ class CourseRecord:
     skills_gained: str | None
     date_added: str | None
     sector_category: str | None
-    training_duration_days: str | None
     language_used: str | None
     search_keyword: str
     scrape_status: str
@@ -172,20 +173,20 @@ def extract_duration(soup: BeautifulSoup) -> str | None:
     return None
 
 
-def extract_duration_days_fallback(soup: BeautifulSoup) -> str | None:
-    """Aggressive fallback for `training_duration_days`.
+def extract_duration_fallback(soup: BeautifulSoup) -> str | None:
+    """Aggressive fallback for `training_duration`.
 
     The tag-based loop in `extract_meta_footer` misses values when the live
-    markup splits the number and the word "days" across whitespace/newlines
-    inside a single text node. This scans every raw text node directly
-    (`soup.find_all(string=True)`), bypassing tag hierarchy, and normalises
-    whitespace before matching.
+    markup splits the number and the unit ("hours"/"hrs"/"day"/"days")
+    across whitespace/newlines inside a single text node. This scans every
+    raw text node directly (`soup.find_all(string=True)`), bypassing tag
+    hierarchy, and normalises whitespace before matching.
     """
     for text_node in soup.find_all(string=True):
         clean_text = " ".join(text_node.split()).strip()
         if not clean_text:
             continue
-        match = _DURATION_DAYS_PATTERN.search(clean_text)
+        match = _DURATION_PATTERN.search(clean_text)
         if match:
             return match.group(1).strip()
     return None
@@ -281,12 +282,18 @@ def extract_skills_gained(soup: BeautifulSoup) -> str | None:
 
 def extract_meta_footer(soup: BeautifulSoup) -> tuple[str | None, str | None, str | None, str | None]:
     """Parses the icon-driven meta footer line (date added / sector /
-    duration-in-days / language). Each token has no static label, so it's
-    matched either against a date/duration pattern or a finite reference
-    list of known sector and language values."""
+    duration / language). Each token has no static label, so it's matched
+    either against a date/duration pattern or a finite reference list of
+    known sector and language values.
+
+    The duration token here is a supplementary source for `training_duration`
+    - it's combined with `extract_duration`'s label-based lookup by the
+    caller, since the meta footer only carries a value when the live markup
+    renders it as an icon/token rather than a label/value pair.
+    """
     date_added = None
     sector_category = None
-    training_duration_days = None
+    training_duration = None
     language_used = None
 
     for el in soup.find_all(["span", "div", "li", "p"]):
@@ -300,12 +307,12 @@ def extract_meta_footer(soup: BeautifulSoup) -> tuple[str | None, str | None, st
                 date_added = match.group(0)
 
         if (
-            training_duration_days is None
-            and ("day" in text.lower() or "days" in text.lower())
+            training_duration is None
+            and any(marker in text.lower() for marker in ("hours", "hrs", "day", "days"))
             and any(ch.isdigit() for ch in text)
             and len(text) < 15
         ):
-            training_duration_days = text
+            training_duration = text
 
         if sector_category is None and text in _KNOWN_SECTORS:
             sector_category = text
@@ -313,13 +320,13 @@ def extract_meta_footer(soup: BeautifulSoup) -> tuple[str | None, str | None, st
         if language_used is None and text in _KNOWN_LANGUAGES:
             language_used = text
 
-        if date_added and training_duration_days and sector_category and language_used:
+        if date_added and training_duration and sector_category and language_used:
             break
 
-    if training_duration_days is None:
-        training_duration_days = extract_duration_days_fallback(soup)
+    if training_duration is None:
+        training_duration = extract_duration_fallback(soup)
 
-    return date_added, sector_category, training_duration_days, language_used
+    return date_added, sector_category, training_duration, language_used
 
 
 def _classify_status(
@@ -353,7 +360,6 @@ def _failed_record(course_ref: CourseRef) -> CourseRecord:
         skills_gained=None,
         date_added=None,
         sector_category=None,
-        training_duration_days=None,
         language_used=None,
         search_keyword=course_ref.search_keyword,
         scrape_status=FAILED,
@@ -398,7 +404,9 @@ async def extract_course_detail(
         count_attended = extract_attendance(soup)
         course_description = extract_description(soup)
         skills_gained = extract_skills_gained(soup)
-        date_added, sector_category, training_duration_days, language_used = extract_meta_footer(soup)
+        date_added, sector_category, duration_from_meta, language_used = extract_meta_footer(soup)
+        if not duration:
+            duration = duration_from_meta
 
         status = _classify_status(title, provider, duration, fee_standard)
         if status != SUCCESS:
@@ -423,7 +431,6 @@ async def extract_course_detail(
             skills_gained=skills_gained,
             date_added=date_added,
             sector_category=sector_category,
-            training_duration_days=training_duration_days,
             language_used=language_used,
             search_keyword=course_ref.search_keyword,
             scrape_status=status,
