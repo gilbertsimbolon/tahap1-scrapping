@@ -163,14 +163,21 @@ def extract_duration(soup: BeautifulSoup) -> str | None:
     if val:
         return val
 
-    # Cara 2: Cari teks yang mengandung kata 'days' atau 'hours' (misal: 3-5 days)
+    # Cara 2: Ambil yang berbasis jam (Hours), karena Days sudah di-handle meta_footer
     for el in soup.find_all(["span", "div", "p"]):
         text = el.get_text(strip=True).lower()
-        # Jika teksnya pendek dan mengandung pola durasi khas MySkillsFuture
-        if any(marker in text for marker in ["days", "days", "hours", "hrs"]) and len(text) < 15:
-            # Pastikan bukan teks tombol/link panjang
+        if any(marker in text for marker in ["days", "day"]) and len(text) < 15:
             return el.get_text(strip=True)
+    return None
 
+def extract_duration_fallback(soup: BeautifulSoup) -> str | None:
+    """Fallback agresif melacak seluruh text node tanpa memedulikan hierarki."""
+    for text_node in soup.find_all(string=True):
+        clean_txt = " ".join(text_node.split()).strip()
+        if "day" in clean_txt.lower():
+            match = re.search(r'\b(\d+(?:\s*[-\u2013\u2014]\s*\d+)?\s*days?)\b', clean_txt, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
     return None
 
 
