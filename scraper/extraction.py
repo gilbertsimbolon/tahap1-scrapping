@@ -44,6 +44,7 @@ _DATE_ADDED_PATTERN = re.compile(
     r"\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}\b",
     re.IGNORECASE,
 )
+_DURATION_DAYS_PATTERN = re.compile(r"\b(\d+(?:\s*[-–—]\s*\d+)?\s*days?)\b", re.IGNORECASE)
 _DESCRIPTION_HEADING_MARKERS = ["course description", "about this course", "description"]
 _SKILLS_HEADING_MARKERS = ["skills you'll pick up", "skills you will pick up", "what you'll learn"]
 _MAX_META_TOKEN_LEN = 60
@@ -86,7 +87,7 @@ class CourseRecord:
     fee_subsidized: str | None
     rating_score: str | None
     rating_count: str | None
-    telah_menghadiri: str | None
+    count_attended: str | None
     course_description: str | None
     skills_gained: str | None
     date_added: str | None
@@ -170,14 +171,23 @@ def extract_duration(soup: BeautifulSoup) -> str | None:
             return el.get_text(strip=True)
     return None
 
-def extract_duration_fallback(soup: BeautifulSoup) -> str | None:
-    """Fallback agresif melacak seluruh text node tanpa memedulikan hierarki."""
+
+def extract_duration_days_fallback(soup: BeautifulSoup) -> str | None:
+    """Aggressive fallback for `training_duration_days`.
+
+    The tag-based loop in `extract_meta_footer` misses values when the live
+    markup splits the number and the word "days" across whitespace/newlines
+    inside a single text node. This scans every raw text node directly
+    (`soup.find_all(string=True)`), bypassing tag hierarchy, and normalises
+    whitespace before matching.
+    """
     for text_node in soup.find_all(string=True):
-        clean_txt = " ".join(text_node.split()).strip()
-        if "day" in clean_txt.lower():
-            match = re.search(r'\b(\d+(?:\s*[-\u2013\u2014]\s*\d+)?\s*days?)\b', clean_txt, re.IGNORECASE)
-            if match:
-                return match.group(1).strip()
+        clean_text = " ".join(text_node.split()).strip()
+        if not clean_text:
+            continue
+        match = _DURATION_DAYS_PATTERN.search(clean_text)
+        if match:
+            return match.group(1).strip()
     return None
 
 
@@ -306,6 +316,9 @@ def extract_meta_footer(soup: BeautifulSoup) -> tuple[str | None, str | None, st
         if date_added and training_duration_days and sector_category and language_used:
             break
 
+    if training_duration_days is None:
+        training_duration_days = extract_duration_days_fallback(soup)
+
     return date_added, sector_category, training_duration_days, language_used
 
 
@@ -335,7 +348,7 @@ def _failed_record(course_ref: CourseRef) -> CourseRecord:
         fee_subsidized=None,
         rating_score=None,
         rating_count=None,
-        telah_menghadiri=None,
+        count_attended=None,
         course_description=None,
         skills_gained=None,
         date_added=None,
@@ -382,7 +395,7 @@ async def extract_course_detail(
         mode = extract_mode(soup)
         fee_standard, fee_subsidized = extract_fees(soup)
         rating_score, rating_count = extract_rating(soup)
-        telah_menghadiri = extract_attendance(soup)
+        count_attended = extract_attendance(soup)
         course_description = extract_description(soup)
         skills_gained = extract_skills_gained(soup)
         date_added, sector_category, training_duration_days, language_used = extract_meta_footer(soup)
@@ -405,7 +418,7 @@ async def extract_course_detail(
             fee_subsidized=fee_subsidized,
             rating_score=rating_score,
             rating_count=rating_count,
-            telah_menghadiri=telah_menghadiri,
+            count_attended=count_attended,
             course_description=course_description,
             skills_gained=skills_gained,
             date_added=date_added,
