@@ -130,25 +130,27 @@ def extract_title(soup: BeautifulSoup) -> str | None:
 
 
 def extract_provider(soup: BeautifulSoup) -> str | None:
-    # Cara 1: Coba pakai label bawaan bawaan arsitektur asli
+    # First, try the standard label-based lookup.
     val = _find_label_value(soup, _PROVIDER_LABELS)
     if val:
         return val
 
-    # Cara 2: Cari teks apa pun yang mengandung kata 'LTD.' atau 'PTE.' atau 'CO.'
-    # (Khas penamaan nama perusahaan/vendor di Singapura)
+    # Otherwise, look for any text containing 'LTD', 'PTE', or 'CO' - typical
+    # suffixes for Singapore company/vendor names.
     for el in soup.find_all(["div", "span", "p", "a"]):
         text = el.get_text(strip=True)
         text_upper = text.upper()
         if any(suffix in text_upper for suffix in ["LTD", "PTE", "CORP", "INSTITUTE", "UNIVERSITY", "SCHOOL"]) and len(text) < 60:
-            # Pastikan bukan potongan teks syarat yang panjang
+            # Make sure this isn't a snippet from a long eligibility/terms block.
             if not text.startswith("http") and "eligible" not in text.lower():
                 return text
 
-    # Cara 3: Heuristic backup - ambil elemen teks non-kosong pertama di paling atas card/halaman
+    # Last resort heuristic: take the first non-empty text element near the
+    # top of the page.
     h1 = soup.find("h1")
     if h1:
-        # Tarik semua teks di atas judul utama, cari yang panjangnya ideal sebagai nama PT
+        # Scan all text above the main heading, looking for a plausible
+        # provider-name length.
         parent = h1.parent
         if parent:
             for sibling in h1.find_all_previous(["div", "span", "p"]):
@@ -160,12 +162,13 @@ def extract_provider(soup: BeautifulSoup) -> str | None:
 
 
 def extract_duration(soup: BeautifulSoup) -> str | None:
-    # Cara 1: Coba pakai label bawaan dulu
+    # First, try the standard label-based lookup.
     val = _find_label_value(soup, _DURATION_LABELS)
     if val:
         return val
 
-    # Cara 2: Ambil yang berbasis jam (Hours), karena Days sudah di-handle meta_footer
+    # Otherwise, take the hour-based value, since day-based values are
+    # already handled by meta_footer.
     for el in soup.find_all(["span", "div", "p"]):
         text = el.get_text(strip=True).lower()
         if any(marker in text for marker in ["days", "day"]) and len(text) < 15:
@@ -221,21 +224,22 @@ def extract_rating(soup: BeautifulSoup) -> tuple[str | None, str | None]:
 
 
 def extract_attendance(soup: BeautifulSoup) -> str | None:
-    """Mencari elemen yang mengandung 'have attended' dan mengunci 
-    hanya angka yang berada tepat di depan kalimat tersebut."""
-    
+    """Finds elements containing 'have attended' and captures only the
+    number immediately preceding that phrase."""
+
     for el in soup.find_all(["span", "div", "p"]):
         text = el.get_text(" ", strip=True)
         if text and "have attended" in text.lower():
-            # Mengunci angka/koma yang berada tepat sebelum kata 'have attended'
+            # Capture the number/comma sequence right before 'have attended'.
             match = re.search(r'([\d,]+)\s+have attended', text, re.IGNORECASE)
             if match:
                 return match.group(1)
 
-    # Fallback: scan langsung text node jika elemen terpisah tag
+    # Fallback: scan raw text nodes directly, in case the value is split
+    # across separate tags.
     for node in soup.find_all(string=re.compile(r"have attended", re.IGNORECASE)):
         text = node.strip()
-        # Coba cari di teks node itu sendiri atau gabungan teks dari induknya (parent)
+        # Try matching against the text node itself, or the combined text of its parent.
         parent_text = node.parent.get_text(" ", strip=True) if node.parent else text
         match = re.search(r'([\d,]+)\s+have attended', parent_text, re.IGNORECASE)
         if match:

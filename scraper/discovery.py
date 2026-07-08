@@ -109,7 +109,7 @@ async def discover_courses(
         html = await page.content()
         page_refs = parse_listing(html, config.base_url)
 
-        print(f"--> Halaman {page_number}: Berhasil mendeteksi {len(page_refs)} link kursus.")
+        print(f"--> Page {page_number}: Successfully detected {len(page_refs)} course links.")
 
         if not page_refs:
             logger.info("No course listings found on page, stopping pagination", extra={"url": url})
