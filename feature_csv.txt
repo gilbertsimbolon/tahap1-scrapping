@@ -1,0 +1,3 @@
+Hello Claude, please modify `scraper/extraction.py` or `scraper/main.py` where the CLI arguments are handled to make the CSV export an optional feature driven by a command flag.
+
+Add a new argument flag named `--export-csv` to the argparse configuration inside the main entry point. Update the execution logic so that the scraper only triggers the SQLite-to-CSV database query and file creation when this specific flag is passed in the command line. If the flag is omitted during a regular scraping run, the script should strictly save data to the SQLite database without generating or overwriting the `courses.csv` file. Please update the argument parsing block and the main function block to reflect this conditional export logic.

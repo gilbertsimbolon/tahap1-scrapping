@@ -15,6 +15,7 @@ import random
 import sqlite3
 import sys
 import uuid
+from pathlib import Path
 
 from scraper.browser.session import ProxyPool, SessionManager
 from scraper.config import Config, load_config
@@ -23,6 +24,7 @@ from scraper.extraction import FAILED, extract_course_detail
 from scraper.logger import configure_logging, get_logger
 from scraper.resilience import CircuitBreaker, RateLimiter
 from scraper.storage import db
+from scraper.storage.export import export_to_csv
 
 logger = get_logger("main")
 
@@ -35,6 +37,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--resume", action="store_true", help="Resume a previously interrupted run")
     parser.add_argument("--run-id", default=None, help="Run ID to resume, or to assign to a new run")
     parser.add_argument("--config", default=None, help="Path to config.yaml (default: project root)")
+    parser.add_argument(
+        "--export-csv",
+        action="store_true",
+        help="Export the SQLite database to data/courses.csv after the run completes",
+    )
     return parser.parse_args(argv)
 
 
@@ -170,6 +177,12 @@ def main(argv: list[str] | None = None) -> int:
     logger.info(f"Starting run {run_id} for keywords: {keywords}")
     asyncio.run(run(config, run_id, keywords, resuming))
     logger.info(f"Run {run_id} finished")
+
+    if args.export_csv:
+        csv_path = Path(config.db_path).parent / "courses.csv"
+        row_count = export_to_csv(config.db_path, csv_path)
+        logger.info(f"Exported {row_count} rows to {csv_path}")
+
     return 0
 
 

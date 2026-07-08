@@ -10,7 +10,9 @@
       "Bash(dpkg -L libpython3.12-stdlib)",
       "Bash(apt-cache policy *)",
       "Bash(apt-get install *)",
-      "Bash(sudo -n true)"
+      "Bash(sudo -n true)",
+      "Bash(python *)",
+      "Bash(python3 *)"
     ]
   }
 }
