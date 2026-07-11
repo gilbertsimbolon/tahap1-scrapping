@@ -23,11 +23,11 @@ def _record(course_id="TGS-2024048217", **overrides) -> CourseRecord:
         provider_name="Acme Training",
         training_duration="8 hours",
         training_mode="Classroom",
-        fee_standard="SGD 100.00",
-        fee_subsidized="SGD 30.00",
-        rating_score="4.8",
-        rating_count="1,234 ratings",
-        count_attended="5,678 have attended",
+        fee_standard=100.00,
+        fee_subsidized=30.00,
+        rating_score=4.8,
+        rating_count=1234,
+        count_attended=5678,
         course_description="A hands-on introduction to AI fundamentals.",
         skills_gained="Machine Learning, Data Analysis",
         date_added="13 Jun 2026",
@@ -56,12 +56,12 @@ def test_upsert_course_inserts_new_row(conn):
 
 
 def test_upsert_course_updates_existing_row_without_duplicating(conn):
-    db.upsert_course(conn, _record(fee_standard="SGD 100.00"))
-    db.upsert_course(conn, _record(fee_standard="SGD 150.00"))
+    db.upsert_course(conn, _record(fee_standard=100.00))
+    db.upsert_course(conn, _record(fee_standard=150.00))
 
     rows = conn.execute("SELECT * FROM courses WHERE course_id = ?", ("TGS-2024048217",)).fetchall()
     assert len(rows) == 1
-    assert rows[0]["fee_standard"] == "SGD 150.00"
+    assert rows[0]["fee_standard"] == 150.00
 
 
 def test_course_id_uniqueness_enforced(conn):

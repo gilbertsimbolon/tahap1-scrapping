@@ -17,6 +17,9 @@ from scraper.extraction import (
     extract_rating,
     extract_skills_gained,
     extract_title,
+    parse_count,
+    parse_fee,
+    parse_rating_score,
 )
 
 DETAIL_HTML = """
@@ -178,3 +181,32 @@ def test_extract_meta_footer_missing():
     assert sector_category is None
     assert training_duration is None
     assert language_used is None
+
+
+def test_parse_fee():
+    assert parse_fee("SGD 1200.00") == 1200.0
+    assert parse_fee("SGD 1,200.50") == 1200.5
+
+
+def test_parse_fee_missing():
+    assert parse_fee(None) is None
+    assert parse_fee("Free") is None
+
+
+def test_parse_rating_score():
+    assert parse_rating_score("4.8") == 4.8
+
+
+def test_parse_rating_score_missing():
+    assert parse_rating_score(None) is None
+
+
+def test_parse_count():
+    assert parse_count("1,234 ratings") == 1234
+    assert parse_count("5,678 have attended") == 5678
+    assert parse_count("11,207") == 11207
+
+
+def test_parse_count_missing():
+    assert parse_count(None) is None
+    assert parse_count("no data") is None

@@ -40,6 +40,10 @@ _FEE_SUBSIDIZED_LABELS = ["SkillsFuture Subsidies", "Nett Course Fee", "Nett Fee
 # heuristic, selector-based parser instead.
 _RATING_SCORE_PATTERN = re.compile(r"^\d(?:\.\d)?$")
 _RATING_COUNT_PATTERN = re.compile(r"^[\d,]+\s+ratings?$", re.IGNORECASE)
+_NUMERIC_TOKEN_PATTERN = re.compile(r"\d+(?:\.\d+)?")
+_INTEGER_TOKEN_PATTERN = re.compile(r"\d+")
+_NUMERIC_TOKEN_PATTERN = re.compile(r"\d+(?:\.\d+)?")
+_INTEGER_TOKEN_PATTERN = re.compile(r"\d+")
 _DATE_ADDED_PATTERN = re.compile(
     r"\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}\b",
     re.IGNORECASE,
@@ -85,11 +89,11 @@ class CourseRecord:
     provider_name: str | None
     training_duration: str | None
     training_mode: str | None
-    fee_standard: str | None
-    fee_subsidized: str | None
-    rating_score: str | None
-    rating_count: str | None
-    count_attended: str | None
+    fee_standard: float | None
+    fee_subsidized: float | None
+    rating_score: float | None
+    rating_count: int | None
+    count_attended: int | None
     course_description: str | None
     skills_gained: str | None
     date_added: str | None
@@ -97,6 +101,32 @@ class CourseRecord:
     language_used: str | None
     search_keyword: str
     scrape_status: str
+
+
+def parse_fee(value: str | None) -> float | None:
+    """Sanitizes a fee string (currency code, thousands separators, e.g.
+    'SGD 1,200.00') into a float. Returns None if no number is recoverable."""
+    if value is None:
+        return None
+    match = _NUMERIC_TOKEN_PATTERN.search(value.replace(",", ""))
+    return float(match.group(0)) if match else None
+
+
+def parse_rating_score(value: str | None) -> float | None:
+    """Sanitizes a rating score string (e.g. '4.8') into a float."""
+    if value is None:
+        return None
+    match = _NUMERIC_TOKEN_PATTERN.search(value)
+    return float(match.group(0)) if match else None
+
+
+def parse_count(value: str | None) -> int | None:
+    """Sanitizes a count string (e.g. '1,234 ratings', '5,678 have
+    attended', or a bare '11,207') into an int."""
+    if value is None:
+        return None
+    match = _INTEGER_TOKEN_PATTERN.search(value.replace(",", ""))
+    return int(match.group(0)) if match else None
 
 
 def _find_label_value(soup: BeautifulSoup, labels: list[str]) -> str | None:
@@ -337,12 +367,16 @@ def _classify_status(
     course_title: str | None,
     provider_name: str | None,
     training_duration: str | None,
-    fee_standard: str | None,
+    fee_standard: float | None,
 ) -> str:
-    mandatory = (course_title, provider_name, training_duration, fee_standard)
-    if all(mandatory):
+    # Compare against None rather than truthiness - fee_standard is now a
+    # float, and a free course (0.0) must not be treated as missing.
+    mandatory_present = [
+        v is not None for v in (course_title, provider_name, training_duration, fee_standard)
+    ]
+    if all(mandatory_present):
         return SUCCESS
-    if any(mandatory):
+    if any(mandatory_present):
         return PARTIAL
     return FAILED
 
@@ -403,9 +437,13 @@ async def extract_course_detail(
         provider = extract_provider(soup)
         duration = extract_duration(soup)
         mode = extract_mode(soup)
-        fee_standard, fee_subsidized = extract_fees(soup)
-        rating_score, rating_count = extract_rating(soup)
-        count_attended = extract_attendance(soup)
+        fee_standard_raw, fee_subsidized_raw = extract_fees(soup)
+        fee_standard = parse_fee(fee_standard_raw)
+        fee_subsidized = parse_fee(fee_subsidized_raw)
+        rating_score_raw, rating_count_raw = extract_rating(soup)
+        rating_score = parse_rating_score(rating_score_raw)
+        rating_count = parse_count(rating_count_raw)
+        count_attended = parse_count(extract_attendance(soup))
         course_description = extract_description(soup)
         skills_gained = extract_skills_gained(soup)
         date_added, sector_category, duration_from_meta, language_used = extract_meta_footer(soup)
