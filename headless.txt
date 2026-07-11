@@ -1,3 +1,0 @@
-Hello Claude, please update the Playwright browser launch configuration inside the project (typically found in `scraper/main.py` or a dedicated browser initialization file) so that the scraper runs in headless mode. 
-
-Modify the browser launch line—such as `await playwright.chromium.launch(...)`—to explicitly include the parameter `headless=True`. This ensures that when the script is executed via the terminal, the browser runs entirely in the background without opening a visible graphical user interface window. Keep all other launch arguments, context configurations, and stealth configurations exactly as they are.
