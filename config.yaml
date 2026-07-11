@@ -20,7 +20,7 @@ concurrency:
   max_sessions: 2          # keep low (1-3) to balance throughput vs detection risk
 
 pagination:
-  max_pages: 3            # safety cap on search-result pagination
+  max_pages: 1            # safety cap on search-result pagination
 
 rate_limit:
   requests_per_minute: 12
