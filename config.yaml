@@ -5,7 +5,7 @@
 base_url: "https://courses.myskillsfuture.gov.sg"
 db_path: "data/courses.db"
 log_path: "data/scraper.log"
-headless: false
+headless: true
 
 jitter:
   min_seconds: 2.0

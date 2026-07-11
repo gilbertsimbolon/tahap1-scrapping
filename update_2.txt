@@ -1,0 +1,3 @@
+Hello Claude, to clarify: the scraper is working completely fine and navigates through the courses normally, but it STILL opens a visible browser window. I want the execution to be entirely invisible (100% hidden in the background). 
+
+Please locate the exact file where `playwright.chromium.launch` or `launch_persistent_context` is executed to start the browser session. Modify that specific launch call to explicitly set `headless=True`. Make sure there are no conflicting variables or hardcoded `headless=False` overrides anywhere in the initialization parameters that are causing the graphical browser window to open.
