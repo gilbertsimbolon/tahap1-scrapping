@@ -1,0 +1,17 @@
+Hello Claude, I want to implement the Stage 2 deep extraction features directly into our current project architecture inside the `tahap_1` folder. We are modifying and extending the existing code, not creating a separate project.
+
+Please read the new `PRD.md` and `CLAUDE.md` files in the root directory and update the codebase with the following requirements:
+
+1. Database Schema Extension: Update the SQLite database initialization or run a migration layer to append the new columns (`provider_email`, `provider_phone`, `provider_website`, `rating_score`, `rating_count`, `category_sector`, and `language`) into the existing `courses` table without breaking historical data.
+2. Dataclass & Storage Update: Extend the `CourseRecord` dataclass and the database upsert logic to capture and save these new fields alongside Stage 1 attributes.
+3. DOM Selector Implementation: Inside the parser implementation (such as `scraper/extraction.py`), add resilient locators to extract the target fields from the course detail page layout:
+   - Course Identifier (e.g., TGS-...)
+   - Course Title & Training Provider Name
+   - Provider Contact Email (parsing the `mailto:` anchor)
+   - Provider Contact Phone (parsing the `tel:` anchor)
+   - Provider Website URL (extracting the href from the website link)
+   - Rating Score & Total Ratings Count
+   - Category Sector Tag & Primary Language
+4. Export Sync: Ensure that the optional `--export-csv` flag dynamically exports all 12 combined columns into the generated `courses.csv` file using the previously fixed Excel-compatible formatting.
+
+Please update the existing project files directly to incorporate these Stage 2 fields cleanly.

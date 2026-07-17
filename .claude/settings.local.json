@@ -14,7 +14,9 @@
       "Bash(python *)",
       "Bash(python3 *)",
       "Bash(compgen -c)",
-      "Bash(command -v python python3 python3.11 py)"
+      "Bash(command -v python python3 python3.11 py)",
+      "Bash(pip --version)",
+      "Bash(pip3 --version)"
     ]
   }
 }

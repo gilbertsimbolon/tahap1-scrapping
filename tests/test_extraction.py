@@ -14,6 +14,7 @@ from scraper.extraction import (
     extract_meta_footer,
     extract_mode,
     extract_provider,
+    extract_provider_contact,
     extract_rating,
     extract_skills_gained,
     extract_title,
@@ -181,6 +182,46 @@ def test_extract_meta_footer_missing():
     assert sector_category is None
     assert training_duration is None
     assert language_used is None
+
+
+CONTACT_DETAIL_HTML = """
+<html>
+  <body>
+    <h1>Certified AI Practitioner</h1>
+    <div class="provider-contact">
+      <a href="mailto:training@acme.com.sg?subject=Enquiry">Email us</a>
+      <a href="tel:+6561234567">Call us</a>
+      <a class="website-link" href="https://acmetraining.example.com">Visit Website</a>
+      <a href="https://courses.myskillsfuture.gov.sg/terms">Terms of Use</a>
+    </div>
+  </body>
+</html>
+"""
+
+
+def test_extract_provider_contact():
+    email, phone, website = extract_provider_contact(_soup(CONTACT_DETAIL_HTML))
+    assert email == "training@acme.com.sg"
+    assert phone == "+6561234567"
+    assert website == "https://acmetraining.example.com"
+
+
+def test_extract_provider_contact_missing():
+    email, phone, website = extract_provider_contact(_soup(DETAIL_HTML))
+    assert email is None
+    assert phone is None
+    assert website is None
+
+
+def test_extract_provider_contact_website_fallback_skips_internal_links():
+    html = """
+    <html><body>
+      <a href="https://courses.myskillsfuture.gov.sg/terms">Terms of Use</a>
+      <a href="https://partner-site.example.com">Learn More</a>
+    </body></html>
+    """
+    _, _, website = extract_provider_contact(_soup(html))
+    assert website == "https://partner-site.example.com"
 
 
 def test_parse_fee():

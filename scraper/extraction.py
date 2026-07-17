@@ -80,6 +80,11 @@ _KNOWN_SECTORS = [
 ]
 _KNOWN_LANGUAGES = ["English", "Mandarin", "Malay", "Tamil", "Chinese", "Bahasa Indonesia", "Bilingual"]
 
+_MAILTO_PATTERN = re.compile(r"^mailto:", re.IGNORECASE)
+_TEL_PATTERN = re.compile(r"^tel:", re.IGNORECASE)
+_WEBSITE_TEXT_MARKERS = ["website", "visit site", "visit website", "official site", "provider site"]
+_INTERNAL_HOST_MARKER = "myskillsfuture.gov.sg"
+
 
 @dataclass(frozen=True)
 class CourseRecord:
@@ -99,6 +104,9 @@ class CourseRecord:
     date_added: str | None
     sector_category: str | None
     language_used: str | None
+    provider_email: str | None
+    provider_phone: str | None
+    provider_website: str | None
     search_keyword: str
     scrape_status: str
 
@@ -233,6 +241,46 @@ def extract_fees(soup: BeautifulSoup) -> tuple[str | None, str | None]:
     fee_standard = _find_label_value(soup, _FEE_STANDARD_LABELS)
     fee_subsidized = _find_label_value(soup, _FEE_SUBSIDIZED_LABELS)
     return fee_standard, fee_subsidized
+
+
+def extract_provider_contact(soup: BeautifulSoup) -> tuple[str | None, str | None, str | None]:
+    """Provider email/phone/website render as anchor hrefs rather than
+    label/value pairs (`mailto:`, `tel:`, and an outbound link), so each is
+    matched by href shape instead of `_find_label_value`."""
+    email = None
+    phone = None
+    website = None
+
+    mailto_anchor = soup.find("a", href=_MAILTO_PATTERN)
+    if mailto_anchor:
+        raw = mailto_anchor["href"].split(":", 1)[1]
+        email = raw.split("?")[0].strip() or None
+
+    tel_anchor = soup.find("a", href=_TEL_PATTERN)
+    if tel_anchor:
+        raw = tel_anchor["href"].split(":", 1)[1].strip()
+        phone = raw or None
+
+    # Prefer an anchor whose text/class hints it's the provider's own site;
+    # any external (non-MySkillsFuture) http(s) link is used as a fallback.
+    fallback_href = None
+    for anchor in soup.find_all("a", href=True):
+        href = anchor["href"].strip()
+        if not href.lower().startswith(("http://", "https://")):
+            continue
+        if _INTERNAL_HOST_MARKER in href.lower():
+            continue
+        if fallback_href is None:
+            fallback_href = href
+        text = anchor.get_text(strip=True).lower()
+        classes = " ".join(anchor.get("class", [])).lower()
+        if any(marker in text for marker in _WEBSITE_TEXT_MARKERS) or "website" in classes:
+            website = href
+            break
+    if website is None:
+        website = fallback_href
+
+    return email, phone, website
 
 
 def extract_rating(soup: BeautifulSoup) -> tuple[str | None, str | None]:
@@ -399,6 +447,9 @@ def _failed_record(course_ref: CourseRef) -> CourseRecord:
         date_added=None,
         sector_category=None,
         language_used=None,
+        provider_email=None,
+        provider_phone=None,
+        provider_website=None,
         search_keyword=course_ref.search_keyword,
         scrape_status=FAILED,
     )
@@ -449,6 +500,7 @@ async def extract_course_detail(
         date_added, sector_category, duration_from_meta, language_used = extract_meta_footer(soup)
         if not duration:
             duration = duration_from_meta
+        provider_email, provider_phone, provider_website = extract_provider_contact(soup)
 
         status = _classify_status(title, provider, duration, fee_standard)
         if status != SUCCESS:
@@ -474,6 +526,9 @@ async def extract_course_detail(
             date_added=date_added,
             sector_category=sector_category,
             language_used=language_used,
+            provider_email=provider_email,
+            provider_phone=provider_phone,
+            provider_website=provider_website,
             search_keyword=course_ref.search_keyword,
             scrape_status=status,
         )

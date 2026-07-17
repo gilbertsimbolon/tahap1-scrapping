@@ -33,6 +33,9 @@ CREATE TABLE IF NOT EXISTS courses (
     date_added              TEXT,
     sector_category         TEXT,
     language_used           TEXT,
+    provider_email          TEXT,
+    provider_phone          TEXT,
+    provider_website        TEXT,
     search_keyword          TEXT NOT NULL,
     scrape_status       TEXT NOT NULL DEFAULT 'SUCCESS'
                         CHECK (scrape_status IN ('SUCCESS', 'PARTIAL', 'FAILED')),
@@ -79,14 +82,25 @@ CREATE INDEX IF NOT EXISTS idx_run_id ON scrape_logs (run_id);
 CREATE INDEX IF NOT EXISTS idx_queue_run_status ON discovery_queue (run_id, status);
 """
 
+# Columns added after the initial CREATE TABLE shipped. `_migrate_schema`
+# ALTERs pre-existing `courses` tables (created before these columns
+# existed) to add any that are missing, so historical rows/databases are
+# preserved rather than requiring a drop/recreate.
+_ADDED_COLUMNS: list[tuple[str, str]] = [
+    ("provider_email", "TEXT"),
+    ("provider_phone", "TEXT"),
+    ("provider_website", "TEXT"),
+]
+
 UPSERT_COURSE_SQL = """
 INSERT INTO courses (course_id, course_url, course_title, provider_name,
                       training_duration, training_mode, fee_standard,
                       fee_subsidized, rating_score, rating_count,
                       count_attended, course_description, skills_gained,
                       date_added, sector_category,
-                      language_used, search_keyword, scrape_status, last_scraped_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                      language_used, provider_email, provider_phone,
+                      provider_website, search_keyword, scrape_status, last_scraped_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 ON CONFLICT(course_id) DO UPDATE SET
     course_url              = excluded.course_url,
     course_title            = excluded.course_title,
@@ -103,6 +117,9 @@ ON CONFLICT(course_id) DO UPDATE SET
     date_added               = excluded.date_added,
     sector_category          = excluded.sector_category,
     language_used            = excluded.language_used,
+    provider_email           = excluded.provider_email,
+    provider_phone           = excluded.provider_phone,
+    provider_website         = excluded.provider_website,
     scrape_status            = excluded.scrape_status,
     last_scraped_at          = CURRENT_TIMESTAMP;
 """
@@ -117,9 +134,18 @@ def get_connection(db_path: str | Path) -> sqlite3.Connection:
     return conn
 
 
+def _migrate_schema(conn: sqlite3.Connection) -> None:
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(courses)").fetchall()}
+    for column, sql_type in _ADDED_COLUMNS:
+        if column not in existing:
+            conn.execute(f"ALTER TABLE courses ADD COLUMN {column} {sql_type}")
+    conn.commit()
+
+
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_SQL)
     conn.commit()
+    _migrate_schema(conn)
 
 
 def upsert_course(conn: sqlite3.Connection, record: "CourseRecord") -> None:
@@ -142,6 +168,9 @@ def upsert_course(conn: sqlite3.Connection, record: "CourseRecord") -> None:
             record.date_added,
             record.sector_category,
             record.language_used,
+            record.provider_email,
+            record.provider_phone,
+            record.provider_website,
             record.search_keyword,
             record.scrape_status,
         ),

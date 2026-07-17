@@ -33,6 +33,9 @@ def _record(course_id="TGS-2024048217", **overrides) -> CourseRecord:
         date_added="13 Jun 2026",
         sector_category="Information and Communications",
         language_used="English",
+        provider_email="training@acme.com.sg",
+        provider_phone="+65 6123 4567",
+        provider_website="https://acmetraining.example.com",
         search_keyword="artificial intelligence",
         scrape_status="SUCCESS",
     )
