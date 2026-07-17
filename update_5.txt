@@ -1,0 +1,5 @@
+Hello Claude, I found two issues in the current implementation that need immediate fixing:
+
+1. Website Link Extraction Failed: The scraper failed to extract the training provider's website link. Please review and fix the locator logic for `provider_website`. Ensure it specifically targets and extracts the `href` attribute from the anchor tag (`<a>`), rather than trying to pull the visible text. 
+
+2. Column Ordering in CSV/Output: The timestamp columns (such as `scraped_at` and `last_scraped_at`) must always be positioned as the rightmost columns in the final dataset. Currently, the newly added Stage 2 columns are taking up the far-right positions. Please update the CSV export logic and the SQL `SELECT` statements to explicitly define the column order, ensuring that all date/time columns are pushed to the very end of the row.

@@ -84,6 +84,27 @@ _MAILTO_PATTERN = re.compile(r"^mailto:", re.IGNORECASE)
 _TEL_PATTERN = re.compile(r"^tel:", re.IGNORECASE)
 _WEBSITE_TEXT_MARKERS = ["website", "visit site", "visit website", "official site", "provider site"]
 _INTERNAL_HOST_MARKER = "myskillsfuture.gov.sg"
+# Icon-only "visit our website" buttons carry no visible text, so the marker
+# check also needs to look at aria-label/title attributes, not just text/class.
+_WEBSITE_ATTR_MARKERS = ["aria-label", "title"]
+# Provider detail sections commonly list social/share icons alongside the
+# actual website link; without this denylist the "first external link" fallback
+# below would latch onto a Facebook/LinkedIn icon instead of the provider's site.
+_NON_PROVIDER_HOST_MARKERS = [
+    "facebook.com",
+    "instagram.com",
+    "linkedin.com",
+    "twitter.com",
+    "x.com",
+    "youtube.com",
+    "tiktok.com",
+    "wa.me",
+    "whatsapp.com",
+    "t.me",
+    "telegram.me",
+    "maps.google.com",
+    "goo.gl/maps",
+]
 
 
 @dataclass(frozen=True)
@@ -261,22 +282,29 @@ def extract_provider_contact(soup: BeautifulSoup) -> tuple[str | None, str | Non
         raw = tel_anchor["href"].split(":", 1)[1].strip()
         phone = raw or None
 
-    # Prefer an anchor whose text/class hints it's the provider's own site;
-    # any external (non-MySkillsFuture) http(s) link is used as a fallback.
+    # Prefer an anchor whose text/class/aria-label hints it's the provider's
+    # own site; any external (non-MySkillsFuture, non-social) http(s) link is
+    # used as a fallback, in DOM order.
     fallback_href = None
     for anchor in soup.find_all("a", href=True):
         href = anchor["href"].strip()
-        if not href.lower().startswith(("http://", "https://")):
+        href_lower = href.lower()
+        if not href_lower.startswith(("http://", "https://")):
             continue
-        if _INTERNAL_HOST_MARKER in href.lower():
+        if _INTERNAL_HOST_MARKER in href_lower:
             continue
-        if fallback_href is None:
-            fallback_href = href
+        is_social_or_map = any(marker in href_lower for marker in _NON_PROVIDER_HOST_MARKERS)
+
         text = anchor.get_text(strip=True).lower()
         classes = " ".join(anchor.get("class", [])).lower()
-        if any(marker in text for marker in _WEBSITE_TEXT_MARKERS) or "website" in classes:
+        attrs = " ".join(anchor.get(attr, "") for attr in _WEBSITE_ATTR_MARKERS).lower()
+        haystack = f"{text} {classes} {attrs}"
+        if any(marker in haystack for marker in _WEBSITE_TEXT_MARKERS):
             website = href
             break
+
+        if not is_social_or_map and fallback_href is None:
+            fallback_href = href
     if website is None:
         website = fallback_href
 

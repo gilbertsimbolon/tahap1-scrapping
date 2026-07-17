@@ -224,6 +224,31 @@ def test_extract_provider_contact_website_fallback_skips_internal_links():
     assert website == "https://partner-site.example.com"
 
 
+def test_extract_provider_contact_website_skips_social_icons():
+    html = """
+    <html><body>
+      <div class="provider-contact">
+        <a class="icon-fb" href="https://www.facebook.com/acmetraining">Facebook</a>
+        <a class="icon-li" href="https://www.linkedin.com/company/acmetraining">LinkedIn</a>
+        <a class="site-icon" aria-label="Visit our website" href="https://acmetraining.example.com"></a>
+      </div>
+    </body></html>
+    """
+    _, _, website = extract_provider_contact(_soup(html))
+    assert website == "https://acmetraining.example.com"
+
+
+def test_extract_provider_contact_website_fallback_still_skips_social_only():
+    html = """
+    <html><body>
+      <a href="https://www.facebook.com/acmetraining">Facebook</a>
+      <a href="https://www.instagram.com/acmetraining">Instagram</a>
+    </body></html>
+    """
+    _, _, website = extract_provider_contact(_soup(html))
+    assert website is None
+
+
 def test_parse_fee():
     assert parse_fee("SGD 1200.00") == 1200.0
     assert parse_fee("SGD 1,200.50") == 1200.5
