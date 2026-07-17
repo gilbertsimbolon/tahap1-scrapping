@@ -200,17 +200,19 @@ CONTACT_DETAIL_HTML = """
 
 
 def test_extract_provider_contact():
-    email, phone, website = extract_provider_contact(_soup(CONTACT_DETAIL_HTML))
+    email, phone, website, hint = extract_provider_contact(_soup(CONTACT_DETAIL_HTML))
     assert email == "training@acme.com.sg"
     assert phone == "+6561234567"
     assert website == "https://acmetraining.example.com"
+    assert hint is None
 
 
 def test_extract_provider_contact_missing():
-    email, phone, website = extract_provider_contact(_soup(DETAIL_HTML))
+    email, phone, website, hint = extract_provider_contact(_soup(DETAIL_HTML))
     assert email is None
     assert phone is None
     assert website is None
+    assert hint is None
 
 
 def test_extract_provider_contact_website_fallback_skips_internal_links():
@@ -220,7 +222,7 @@ def test_extract_provider_contact_website_fallback_skips_internal_links():
       <a href="https://partner-site.example.com">Learn More</a>
     </body></html>
     """
-    _, _, website = extract_provider_contact(_soup(html))
+    _, _, website, _ = extract_provider_contact(_soup(html))
     assert website == "https://partner-site.example.com"
 
 
@@ -234,7 +236,7 @@ def test_extract_provider_contact_website_skips_social_icons():
       </div>
     </body></html>
     """
-    _, _, website = extract_provider_contact(_soup(html))
+    _, _, website, _ = extract_provider_contact(_soup(html))
     assert website == "https://acmetraining.example.com"
 
 
@@ -245,8 +247,74 @@ def test_extract_provider_contact_website_fallback_still_skips_social_only():
       <a href="https://www.instagram.com/acmetraining">Instagram</a>
     </body></html>
     """
-    _, _, website = extract_provider_contact(_soup(html))
+    _, _, website, _ = extract_provider_contact(_soup(html))
     assert website is None
+
+
+def test_extract_provider_contact_website_resolves_internal_redirect_param():
+    html = """
+    <html><body>
+      <a class="website-link" href="/redirect?url=https%3A%2F%2Facmetraining.example.com%2Fhome">
+        Visit Website
+      </a>
+    </body></html>
+    """
+    _, _, website, hint = extract_provider_contact(_soup(html))
+    assert website == "https://acmetraining.example.com/home"
+    assert hint is None
+
+
+def test_extract_provider_contact_website_resolves_redirect_param_fallback():
+    html = """
+    <html><body>
+      <a href="https://courses.myskillsfuture.gov.sg/out?target=https%3A%2F%2Fpartner-site.example.com">
+        Learn More
+      </a>
+    </body></html>
+    """
+    _, _, website, hint = extract_provider_contact(_soup(html))
+    assert website == "https://partner-site.example.com"
+    assert hint is None
+
+
+def test_extract_provider_contact_website_returns_click_hint_for_js_link():
+    html = """
+    <html><body>
+      <a class="website-link" href="javascript:void(0)" aria-label="Visit our website">
+        Visit Website
+      </a>
+    </body></html>
+    """
+    _, _, website, hint = extract_provider_contact(_soup(html))
+    assert website is None
+    assert hint is not None
+    assert hint.text == "Visit Website"
+    assert hint.aria_label == "Visit our website"
+
+
+def test_extract_provider_contact_website_returns_click_hint_for_empty_href():
+    html = """
+    <html><body>
+      <a class="website-link" href="#">Visit Website</a>
+    </body></html>
+    """
+    _, _, website, hint = extract_provider_contact(_soup(html))
+    assert website is None
+    assert hint is not None
+    assert hint.text == "Visit Website"
+    assert hint.aria_label is None
+
+
+def test_extract_provider_contact_no_click_hint_when_unmarked_link_has_no_href():
+    html = """
+    <html><body>
+      <a href="#">Some other action</a>
+      <a href="https://partner-site.example.com">Learn More</a>
+    </body></html>
+    """
+    _, _, website, hint = extract_provider_contact(_soup(html))
+    assert website == "https://partner-site.example.com"
+    assert hint is None
 
 
 def test_parse_fee():

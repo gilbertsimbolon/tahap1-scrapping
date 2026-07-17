@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from urllib.parse import parse_qs, unquote, urlparse
 
 from bs4 import BeautifulSoup
 from playwright.async_api import Page
@@ -105,6 +106,26 @@ _NON_PROVIDER_HOST_MARKERS = [
     "maps.google.com",
     "goo.gl/maps",
 ]
+# Some provider-website anchors don't point straight at the destination -
+# the href is an internal redirect/tracking wrapper that carries the real
+# target as a query parameter, e.g. `/redirect?url=https%3A%2F%2Facme.com`.
+# These param names cover the shapes seen on MySkillsFuture and typical
+# redirect-wrapper conventions.
+_REDIRECT_QUERY_PARAMS = ["url", "u", "target", "redirect", "redirecturl", "link", "dest", "destination"]
+_JS_HREF_PATTERN = re.compile(r"^javascript:", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class WebsiteLinkHint:
+    """Identifies a provider-website anchor that has no resolvable `href`
+    in the static HTML - the destination only appears once a real click
+    triggers a JS redirect / opens a new tab. Carried out of
+    `extract_provider_contact` so the caller (which has a live `Page`) can
+    locate the same element and resolve it with `resolve_website_via_click`.
+    """
+
+    text: str | None
+    aria_label: str | None
 
 
 @dataclass(frozen=True)
@@ -264,13 +285,61 @@ def extract_fees(soup: BeautifulSoup) -> tuple[str | None, str | None]:
     return fee_standard, fee_subsidized
 
 
-def extract_provider_contact(soup: BeautifulSoup) -> tuple[str | None, str | None, str | None]:
+def _resolve_redirect_href(href: str) -> str:
+    """If `href` routes through an internal redirect/tracking wrapper that
+    carries the real destination as a query parameter, decode
+    (`urllib.parse.unquote`) and return that target. Otherwise `href` is
+    returned unchanged - this also makes the function a no-op for plain
+    direct links."""
+    query = urlparse(href).query
+    if not query:
+        return href
+    params = parse_qs(query)
+    for name in _REDIRECT_QUERY_PARAMS:
+        values = params.get(name)
+        if not values:
+            continue
+        candidate = unquote(values[0]).strip()
+        if candidate.lower().startswith(("http://", "https://")):
+            return candidate
+    return href
+
+
+def _needs_click_resolution(raw_href: str) -> bool:
+    """True when the anchor carries no usable href at all (empty, `#`, or a
+    `javascript:` pseudo-link) - the destination is only reachable by
+    actually clicking the element and following where it navigates."""
+    if not raw_href or raw_href == "#":
+        return True
+    return bool(_JS_HREF_PATTERN.match(raw_href))
+
+
+def _website_marker_haystack(anchor) -> str:
+    text = anchor.get_text(strip=True).lower()
+    classes = " ".join(anchor.get("class", [])).lower()
+    attrs = " ".join(anchor.get(attr, "") for attr in _WEBSITE_ATTR_MARKERS).lower()
+    return f"{text} {classes} {attrs}"
+
+
+def extract_provider_contact(
+    soup: BeautifulSoup,
+) -> tuple[str | None, str | None, str | None, WebsiteLinkHint | None]:
     """Provider email/phone/website render as anchor hrefs rather than
     label/value pairs (`mailto:`, `tel:`, and an outbound link), so each is
-    matched by href shape instead of `_find_label_value`."""
+    matched by href shape instead of `_find_label_value`.
+
+    The website link is not always a direct href: it may route through an
+    internal redirect wrapper carrying the real target as a query parameter
+    (handled by `_resolve_redirect_href`), or it may have no href at all and
+    rely on a JS click handler to open the destination - in that case no
+    website can be resolved from static HTML, so a `WebsiteLinkHint` is
+    returned instead so the caller can resolve it live via a real click
+    (see `resolve_website_via_click`).
+    """
     email = None
     phone = None
     website = None
+    website_click_hint = None
 
     mailto_anchor = soup.find("a", href=_MAILTO_PATTERN)
     if mailto_anchor:
@@ -286,29 +355,73 @@ def extract_provider_contact(soup: BeautifulSoup) -> tuple[str | None, str | Non
     # own site; any external (non-MySkillsFuture, non-social) http(s) link is
     # used as a fallback, in DOM order.
     fallback_href = None
-    for anchor in soup.find_all("a", href=True):
-        href = anchor["href"].strip()
-        href_lower = href.lower()
-        if not href_lower.startswith(("http://", "https://")):
-            continue
-        if _INTERNAL_HOST_MARKER in href_lower:
-            continue
-        is_social_or_map = any(marker in href_lower for marker in _NON_PROVIDER_HOST_MARKERS)
+    for anchor in soup.find_all("a"):
+        raw_href = (anchor.get("href") or "").strip()
+        is_website_marked = any(
+            marker in _website_marker_haystack(anchor) for marker in _WEBSITE_TEXT_MARKERS
+        )
 
-        text = anchor.get_text(strip=True).lower()
-        classes = " ".join(anchor.get("class", [])).lower()
-        attrs = " ".join(anchor.get(attr, "") for attr in _WEBSITE_ATTR_MARKERS).lower()
-        haystack = f"{text} {classes} {attrs}"
-        if any(marker in haystack for marker in _WEBSITE_TEXT_MARKERS):
-            website = href
+        if _needs_click_resolution(raw_href):
+            if is_website_marked:
+                aria_label = anchor.get("aria-label") or anchor.get("title") or None
+                website_click_hint = WebsiteLinkHint(
+                    text=anchor.get_text(strip=True) or None, aria_label=aria_label
+                )
+                break
+            continue
+
+        resolved_href = _resolve_redirect_href(raw_href)
+        resolved_lower = resolved_href.lower()
+        if not resolved_lower.startswith(("http://", "https://")):
+            continue
+        if _INTERNAL_HOST_MARKER in resolved_lower:
+            continue
+        is_social_or_map = any(marker in resolved_lower for marker in _NON_PROVIDER_HOST_MARKERS)
+
+        if is_website_marked:
+            website = resolved_href
             break
 
         if not is_social_or_map and fallback_href is None:
-            fallback_href = href
-    if website is None:
+            fallback_href = resolved_href
+
+    if website is None and website_click_hint is None:
         website = fallback_href
 
-    return email, phone, website
+    return email, phone, website, website_click_hint
+
+
+async def resolve_website_via_click(page: Page, hint: WebsiteLinkHint, config: Config) -> str | None:
+    """Resolve a provider-website link that only reveals its destination
+    through a real click (see `WebsiteLinkHint`). Simulates a click on the
+    live element and captures the URL of whichever page/tab it opens,
+    per project convention this must never raise - any failure just leaves
+    provider_website as None rather than crashing extraction."""
+    locator = None
+    if hint.aria_label:
+        locator = page.locator(f'[aria-label="{hint.aria_label}"], [title="{hint.aria_label}"]').first
+    elif hint.text:
+        locator = page.get_by_text(hint.text, exact=True).first
+    if locator is None:
+        return None
+
+    timeout_ms = config.website_resolution.click_timeout_seconds * 1000
+    new_page = None
+    try:
+        async with page.context.expect_page(timeout=timeout_ms) as new_page_info:
+            await locator.click(timeout=timeout_ms)
+        new_page = await new_page_info.value
+        await new_page.wait_for_load_state("domcontentloaded", timeout=timeout_ms)
+        return new_page.url
+    except Exception as exc:  # noqa: BLE001 - click-through resolution must never crash the run
+        logger.warning(
+            "Website click-through resolution failed",
+            extra={"url": page.url, "error_type": type(exc).__name__, "retry_count": 0},
+        )
+        return None
+    finally:
+        if new_page is not None:
+            await new_page.close()
 
 
 def extract_rating(soup: BeautifulSoup) -> tuple[str | None, str | None]:
@@ -528,7 +641,9 @@ async def extract_course_detail(
         date_added, sector_category, duration_from_meta, language_used = extract_meta_footer(soup)
         if not duration:
             duration = duration_from_meta
-        provider_email, provider_phone, provider_website = extract_provider_contact(soup)
+        provider_email, provider_phone, provider_website, website_click_hint = extract_provider_contact(soup)
+        if provider_website is None and website_click_hint is not None:
+            provider_website = await resolve_website_via_click(page, website_click_hint, config)
 
         status = _classify_status(title, provider, duration, fee_standard)
         if status != SUCCESS:

@@ -16,7 +16,12 @@
       "Bash(compgen -c)",
       "Bash(command -v python python3 python3.11 py)",
       "Bash(pip --version)",
-      "Bash(pip3 --version)"
+      "Bash(pip3 --version)",
+      "Bash(command -v python3.11 python3.12 python3.10 uv pipx)",
+      "Bash(find / -maxdepth 4 -iname \"python3*\" -type f)",
+      "Bash(command -v conda pyenv asdf)",
+      "Bash(dpkg -L python3.12)",
+      "Bash(command -v apt apt-get sudo)"
     ]
   }
 }

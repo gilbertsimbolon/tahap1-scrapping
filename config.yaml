@@ -29,6 +29,9 @@ circuit_breaker:
   block_threshold: 3        # consecutive blocks before tripping
   cooldown_seconds: 120.0
 
+website_resolution:
+  click_timeout_seconds: 15.0   # max wait for a JS-triggered provider-website tab/redirect to open
+
 proxies:
   enabled: false             # flip to true once a real proxy pool is provisioned
   health_check_url: "https://httpbin.org/ip"

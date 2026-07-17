@@ -55,6 +55,11 @@ class CircuitBreakerConfig:
 
 
 @dataclass(frozen=True)
+class WebsiteResolutionConfig:
+    click_timeout_seconds: float = 15.0
+
+
+@dataclass(frozen=True)
 class ProxyConfig:
     enabled: bool = False
     health_check_url: str = "https://httpbin.org/ip"
@@ -80,6 +85,7 @@ class Config:
     pagination: PaginationConfig
     rate_limit: RateLimitConfig
     circuit_breaker: CircuitBreakerConfig
+    website_resolution: WebsiteResolutionConfig
     proxies: ProxyConfig
     user_agents: tuple[str, ...]
     viewports: tuple[Viewport, ...]
@@ -110,6 +116,7 @@ def load_config(path: str | os.PathLike[str] | None = None) -> Config:
     pagination_raw = _get(raw, "pagination", {})
     rate_limit_raw = _get(raw, "rate_limit", {})
     circuit_breaker_raw = _get(raw, "circuit_breaker", {})
+    website_resolution_raw = _get(raw, "website_resolution", {})
     proxies_raw = _get(raw, "proxies", {})
     viewports_raw = _get(raw, "viewports", [])
 
@@ -139,6 +146,9 @@ def load_config(path: str | os.PathLike[str] | None = None) -> Config:
         circuit_breaker=CircuitBreakerConfig(
             block_threshold=int(_get(circuit_breaker_raw, "block_threshold", 3)),
             cooldown_seconds=float(_get(circuit_breaker_raw, "cooldown_seconds", 120.0)),
+        ),
+        website_resolution=WebsiteResolutionConfig(
+            click_timeout_seconds=float(_get(website_resolution_raw, "click_timeout_seconds", 15.0)),
         ),
         proxies=ProxyConfig(
             enabled=bool(_get(proxies_raw, "enabled", False)),

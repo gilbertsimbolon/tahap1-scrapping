@@ -1,0 +1,7 @@
+Hello Claude, regarding the provider website link: it turns out the `href` attribute does not point directly to the destination URL. Instead, it leads to an internal redirect page or triggers a redirection script.
+
+Please fix this by updating the `provider_website` extraction logic in one of these ways depending on the DOM structure:
+1. If the `href` contains the target website as a query parameter (e.g., `/redirect?url=http...`), extract the string parameter and clean it using `urllib.parse.unquote()`.
+2. If it relies on a click event, utilize Playwright's `async with context.expect_page() as new_page_info:` block. Simulate a clean click on the website link element, wait for the redirected new page/tab to load, capture its active URL via `new_page.url`, and then close that tab immediately.
+
+Please inspect how the redirect is handled on the page and implement the most stable workaround to capture the final target website URL.
