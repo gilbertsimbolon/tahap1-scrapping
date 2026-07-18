@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from bs4 import BeautifulSoup
 from playwright.async_api import Page
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from scraper.config import Config
 from scraper.discovery import CourseRef
@@ -113,6 +114,11 @@ _NON_PROVIDER_HOST_MARKERS = [
 # redirect-wrapper conventions.
 _REDIRECT_QUERY_PARAMS = ["url", "u", "target", "redirect", "redirecturl", "link", "dest", "destination"]
 _JS_HREF_PATTERN = re.compile(r"^javascript:", re.IGNORECASE)
+# Some providers bind the website link to a non-anchor element (a <button>
+# or <div> with a JS click handler / window.open() call) instead of a plain
+# <a href>. There's no href to inspect on these at all, so any match here
+# always needs live click resolution.
+_NON_ANCHOR_CLICK_TAGS = ["button", "div", "span"]
 
 
 @dataclass(frozen=True)
@@ -334,7 +340,9 @@ def extract_provider_contact(
     rely on a JS click handler to open the destination - in that case no
     website can be resolved from static HTML, so a `WebsiteLinkHint` is
     returned instead so the caller can resolve it live via a real click
-    (see `resolve_website_via_click`).
+    (see `resolve_website_via_click`). The click handler isn't always on an
+    `<a>` either - a marked non-anchor element (button/div with an onclick /
+    window.open() binding) is checked as a last resort.
     """
     email = None
     phone = None
@@ -388,15 +396,32 @@ def extract_provider_contact(
     if website is None and website_click_hint is None:
         website = fallback_href
 
+    # No <a> matched - the site may bind the website link to a non-anchor
+    # element instead (button/div with a JS click handler). There's never a
+    # usable href to inspect on these, so any marker match goes straight to
+    # a click hint.
+    if website is None and website_click_hint is None:
+        for el in soup.find_all(_NON_ANCHOR_CLICK_TAGS):
+            if not any(marker in _website_marker_haystack(el) for marker in _WEBSITE_TEXT_MARKERS):
+                continue
+            aria_label = el.get("aria-label") or el.get("title") or None
+            text = el.get_text(strip=True) or None
+            if not aria_label and not text:
+                continue
+            website_click_hint = WebsiteLinkHint(text=text, aria_label=aria_label)
+            break
+
     return email, phone, website, website_click_hint
 
 
 async def resolve_website_via_click(page: Page, hint: WebsiteLinkHint, config: Config) -> str | None:
     """Resolve a provider-website link that only reveals its destination
     through a real click (see `WebsiteLinkHint`). Simulates a click on the
-    live element and captures the URL of whichever page/tab it opens,
-    per project convention this must never raise - any failure just leaves
-    provider_website as None rather than crashing extraction."""
+    live element and captures the destination URL - either a new tab opened
+    via `window.open()`/`target="_blank"`, or a same-tab redirect triggered
+    by a `window.location`-style click handler. Per project convention this
+    must never raise - any failure just leaves provider_website as None
+    rather than crashing extraction."""
     locator = None
     if hint.aria_label:
         locator = page.locator(f'[aria-label="{hint.aria_label}"], [title="{hint.aria_label}"]').first
@@ -406,17 +431,24 @@ async def resolve_website_via_click(page: Page, hint: WebsiteLinkHint, config: C
         return None
 
     timeout_ms = config.website_resolution.click_timeout_seconds * 1000
+    original_url = page.url
     new_page = None
     try:
-        async with page.context.expect_page(timeout=timeout_ms) as new_page_info:
-            await locator.click(timeout=timeout_ms)
-        new_page = await new_page_info.value
-        await new_page.wait_for_load_state("domcontentloaded", timeout=timeout_ms)
-        return new_page.url
+        try:
+            async with page.context.expect_page(timeout=timeout_ms) as new_page_info:
+                await locator.click(timeout=timeout_ms)
+            new_page = await new_page_info.value
+            await new_page.wait_for_load_state("domcontentloaded", timeout=timeout_ms)
+            return new_page.url
+        except PlaywrightTimeoutError:
+            # No new tab opened - the click may have redirected the current
+            # page instead (e.g. a window.location-style handler).
+            await page.wait_for_load_state("domcontentloaded", timeout=timeout_ms)
+            return page.url if page.url != original_url else None
     except Exception as exc:  # noqa: BLE001 - click-through resolution must never crash the run
         logger.warning(
             "Website click-through resolution failed",
-            extra={"url": page.url, "error_type": type(exc).__name__, "retry_count": 0},
+            extra={"url": original_url, "error_type": type(exc).__name__, "retry_count": 0},
         )
         return None
     finally:

@@ -317,6 +317,46 @@ def test_extract_provider_contact_no_click_hint_when_unmarked_link_has_no_href()
     assert hint is None
 
 
+def test_extract_provider_contact_website_returns_click_hint_for_non_anchor_button():
+    html = """
+    <html><body>
+      <button class="website-btn" onclick="window.open('https://acmetraining.example.com')">
+        Visit Website
+      </button>
+    </body></html>
+    """
+    _, _, website, hint = extract_provider_contact(_soup(html))
+    assert website is None
+    assert hint is not None
+    assert hint.text == "Visit Website"
+    assert hint.aria_label is None
+
+
+def test_extract_provider_contact_website_returns_click_hint_for_non_anchor_div_icon():
+    html = """
+    <html><body>
+      <div class="site-icon" aria-label="Visit our website" onclick="goToProviderSite()"></div>
+    </body></html>
+    """
+    _, _, website, hint = extract_provider_contact(_soup(html))
+    assert website is None
+    assert hint is not None
+    assert hint.text is None
+    assert hint.aria_label == "Visit our website"
+
+
+def test_extract_provider_contact_no_non_anchor_hint_when_anchor_website_already_found():
+    html = """
+    <html><body>
+      <a class="website-link" href="https://acmetraining.example.com">Visit Website</a>
+      <button class="unrelated-btn">Visit Website Survey</button>
+    </body></html>
+    """
+    _, _, website, hint = extract_provider_contact(_soup(html))
+    assert website == "https://acmetraining.example.com"
+    assert hint is None
+
+
 def test_parse_fee():
     assert parse_fee("SGD 1200.00") == 1200.0
     assert parse_fee("SGD 1,200.50") == 1200.5
